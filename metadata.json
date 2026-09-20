@@ -1,0 +1,7 @@
+{
+  "name": "Çocuk Oyunları",
+  "description": "Küçük çocuklar için balon patlatmaca, renkli piyano, hayvan sesleri, hafıza kartı oyunu, sihirli boyama tahtası ve sevimli çıkartma albümü içeren eğlenceli oyun dünyası.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
