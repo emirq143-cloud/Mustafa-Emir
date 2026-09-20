@@ -91,11 +91,14 @@ class KidsRepository(private val kidsDao: KidsDao) {
         return true
     }
 
-    suspend fun feedPet(foodEmoji: String): Int {
+    suspend fun feedPet(foodEmoji: String): Pair<Int, Boolean> {
         val currentProfile = kidsDao.getProfileSync() ?: ChildProfileEntity()
-        val newHunger = (currentProfile.petHunger + 20).coerceAtMost(100)
-        val newLove = (currentProfile.petLove + 10).coerceAtMost(100)
-        val starsBonus = 5
+        if (currentProfile.petHunger >= 100) {
+            return Pair(0, false)
+        }
+        val newHunger = (currentProfile.petHunger + 25).coerceAtMost(100)
+        val newLove = (currentProfile.petLove + 8).coerceAtMost(100)
+        val starsBonus = 3
         val updated = currentProfile.copy(
             petHunger = newHunger,
             petLove = newLove,
@@ -104,24 +107,33 @@ class KidsRepository(private val kidsDao: KidsDao) {
         kidsDao.insertOrUpdateProfile(updated)
         kidsDao.insertActivity(
             RecentActivityEntity(
-                title = "Tonton $foodEmoji yedi ve çok mutlu oldu!",
+                title = "Tonton $foodEmoji yedi! (Tokluk: %$newHunger)",
                 starsEarned = starsBonus,
                 iconEmoji = foodEmoji
             )
         )
-        return starsBonus
+        return Pair(starsBonus, true)
     }
 
-    suspend fun petMascot(): Int {
+    suspend fun petMascot(): Pair<Int, Boolean> {
         val currentProfile = kidsDao.getProfileSync() ?: ChildProfileEntity()
-        val newLove = (currentProfile.petLove + 8).coerceAtMost(100)
-        val starsBonus = 2
+        if (currentProfile.petLove >= 100) {
+            return Pair(0, false)
+        }
+        val newLove = (currentProfile.petLove + 10).coerceAtMost(100)
+        val starsBonus = 1
         val updated = currentProfile.copy(
             petLove = newLove,
             totalStars = currentProfile.totalStars + starsBonus
         )
         kidsDao.insertOrUpdateProfile(updated)
-        return starsBonus
+        return Pair(starsBonus, true)
+    }
+
+    suspend fun reducePetHungerAfterGame() {
+        val currentProfile = kidsDao.getProfileSync() ?: return
+        val newHunger = (currentProfile.petHunger - 15).coerceAtLeast(40)
+        kidsDao.insertOrUpdateProfile(currentProfile.copy(petHunger = newHunger))
     }
 
     suspend fun recordBalloonGame(score: Int, starsEarned: Int) {

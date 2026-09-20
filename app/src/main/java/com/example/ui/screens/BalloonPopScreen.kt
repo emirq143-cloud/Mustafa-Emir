@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -41,9 +42,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
@@ -64,6 +69,8 @@ import com.example.ui.theme.SunshineDark
 import com.example.viewmodel.BalloonItem
 import com.example.viewmodel.KidsScreen
 import com.example.viewmodel.KidsViewModel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun BalloonPopScreen(
@@ -219,14 +226,15 @@ fun BalloonPopScreen(
                 }
             }
 
-            // Render Floating Balloons
+            // Render Floating Balloons with isolated keys and clean hitboxes
             for (balloon in balloons) {
-                if (!balloon.isPopped) {
+                key(balloon.id) {
                     FloatingBalloon(
                         balloon = balloon,
                         screenHeightDp = screenHeight.value,
                         screenWidthDp = screenWidth.value,
-                        onPop = { viewModel.popBalloon(balloon.id) }
+                        onPop = { viewModel.popBalloon(balloon.id) },
+                        onFinished = { viewModel.removeBalloon(balloon.id) }
                     )
                 }
             }
@@ -239,59 +247,96 @@ private fun FloatingBalloon(
     balloon: BalloonItem,
     screenHeightDp: Float,
     screenWidthDp: Float,
-    onPop: () -> Unit
+    onPop: () -> Unit,
+    onFinished: () -> Unit
 ) {
+    var isClicked by remember { mutableStateOf(false) }
+    val popScale = remember { Animatable(1.0f) }
+    val popAlpha = remember { Animatable(1.0f) }
+
     val yAnim = remember { Animatable(screenHeightDp + 50f) }
 
+    // Steady and pleasant upward floating
     LaunchedEffect(balloon.id) {
-        val durationMs = (screenHeightDp / (0.12f * balloon.speed) * 10).toInt().coerceIn(3500, 7500)
+        val durationMs = 5600
         yAnim.animateTo(
-            targetValue = -120f,
+            targetValue = -130f,
             animationSpec = tween(durationMillis = durationMs, easing = LinearEasing)
         )
+        onFinished()
     }
 
-    val xPos = (screenWidthDp * balloon.xRatio).coerceIn(20f, screenWidthDp - 90f)
+    // Balloon pop burst animation
+    LaunchedEffect(balloon.isPopped) {
+        if (balloon.isPopped) {
+            launch {
+                popScale.animateTo(1.45f, tween(150, easing = FastOutSlowInEasing))
+            }
+            launch {
+                popAlpha.animateTo(0f, tween(150))
+            }
+            delay(160)
+            onFinished()
+        }
+    }
+
+    // Precise placement according to lane to prevent any multi-touch collision
+    val safeWidth = (screenWidthDp - 85f).coerceAtLeast(120f)
+    val xPos = (safeWidth * balloon.xRatio).coerceIn(12f, safeWidth)
 
     Box(
         modifier = Modifier
             .offset(x = xPos.dp, y = yAnim.value.dp)
             .size(76.dp)
+            .scale(popScale.value)
+            .alpha(popAlpha.value)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) { onPop() }
-            .testTag("balloon_${balloon.id}")
-    ) {
-        // Balloon Body
-        Surface(
-            modifier = Modifier
-                .size(72.dp)
-                .clip(CircleShape),
-            shape = CircleShape,
-            color = Color(balloon.colorHex),
-            border = androidx.compose.foundation.BorderStroke(
-                3.dp,
-                if (balloon.isGolden) Color(0xFFFFD700) else Color.White.copy(alpha = 0.6f)
-            ),
-            shadowElevation = 6.dp
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Text(
-                    text = balloon.emoji,
-                    fontSize = 34.sp
-                )
+                indication = null,
+                enabled = !isClicked && !balloon.isPopped
+            ) {
+                if (!isClicked && !balloon.isPopped) {
+                    isClicked = true
+                    onPop()
+                }
             }
-        }
+            .testTag("balloon_${balloon.id}"),
+        contentAlignment = Alignment.Center
+    ) {
+        if (balloon.isPopped) {
+            // Delightful pop burst sparkles
+            Text("✨", fontSize = 38.sp)
+        } else {
+            // Balloon Body
+            Surface(
+                modifier = Modifier
+                    .size(70.dp)
+                    .clip(CircleShape),
+                shape = CircleShape,
+                color = Color(balloon.colorHex),
+                border = androidx.compose.foundation.BorderStroke(
+                    3.dp,
+                    if (balloon.isGolden) Color(0xFFFFD700) else Color.White.copy(alpha = 0.7f)
+                ),
+                shadowElevation = 5.dp
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = balloon.emoji,
+                        fontSize = 32.sp
+                    )
+                }
+            }
 
-        // Small tied knot at bottom
-        Surface(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .offset(y = 4.dp)
-                .size(10.dp),
-            shape = RoundedCornerShape(2.dp),
-            color = Color(balloon.colorHex)
-        ) {}
+            // Small tied knot at bottom
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .offset(y = 2.dp)
+                    .size(10.dp),
+                shape = RoundedCornerShape(2.dp),
+                color = Color(balloon.colorHex)
+            ) {}
+        }
     }
 }

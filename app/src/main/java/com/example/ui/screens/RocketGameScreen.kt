@@ -267,32 +267,29 @@ fun RocketGameScreen(
                     while (localProgress < 1.0f && isActive) {
                         delay(25)
                         localProgress += item.speed
-                        // Collision check with rocket when item reaches rocket altitude (around 0.82f to 0.95f)
-                        if (localProgress in 0.78f..0.94f) {
+                        // Precise collision check when item reaches rocket nose cone (altitude 0.76f to 0.86f)
+                        if (localProgress in 0.76f..0.86f) {
                             val dist = abs(item.xRatio - rocketX)
-                            if (dist < 0.15f) {
+                            // Realistic direct hit: rocket must be positioned right under the falling item
+                            if (dist < 0.085f) {
                                 viewModel.catchStarItem(item.id)
                                 break
                             }
                         }
                     }
                     if (localProgress >= 1.0f) {
-                        // Cleared bottom
-                        viewModel.catchStarItem(item.id)
+                        // Cleared bottom without hitting the rocket -> Missed!
+                        viewModel.missStarItem(item.id)
                     }
                 }
 
                 val itemX = (item.xRatio * arenaWidth).roundToInt()
-                val itemY = (localProgress * arenaHeight * 0.88f).roundToInt()
+                val itemY = (localProgress * arenaHeight * 0.85f).roundToInt()
 
                 Box(
                     modifier = Modifier
-                        .offset { IntOffset(itemX - 30, itemY) }
+                        .offset { IntOffset(itemX - 28, itemY) }
                         .size(56.dp)
-                        .clip(CircleShape)
-                        .clickable {
-                            viewModel.catchStarItem(item.id)
-                        }
                         .testTag("falling_star_${item.id}"),
                     contentAlignment = Alignment.Center
                 ) {
@@ -300,12 +297,16 @@ fun RocketGameScreen(
                     Surface(
                         modifier = Modifier.size(46.dp),
                         shape = CircleShape,
-                        color = if (item.isSuper) SunnyYellow.copy(alpha = 0.3f) else Color.White.copy(alpha = 0.18f)
+                        color = if (item.isSuper) SunnyYellow.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.18f),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.5.dp,
+                            if (item.isSuper) SunnyYellow else Color.White.copy(alpha = 0.4f)
+                        )
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Text(
                                 text = item.emoji,
-                                fontSize = if (item.isSuper) 32.sp else 28.sp
+                                fontSize = if (item.isSuper) 30.sp else 26.sp
                             )
                         }
                     }
@@ -395,9 +396,12 @@ fun RocketGameScreen(
         ) {
             // Left Button
             Button(
-                onClick = { viewModel.moveRocketBy(-0.12f) },
+                onClick = {
+                    com.example.util.SoundPlayer.playTap()
+                    viewModel.moveRocketBy(-0.17f)
+                },
                 shape = RoundedCornerShape(20.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.2f)),
+                colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.25f)),
                 modifier = Modifier
                     .size(width = 100.dp, height = 52.dp)
                     .testTag("rocket_left_btn")
@@ -418,7 +422,7 @@ fun RocketGameScreen(
                 modifier = Modifier
                     .size(52.dp)
                     .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.2f))
+                    .background(Color.White.copy(alpha = 0.25f))
                     .testTag("rocket_toggle_btn")
             ) {
                 Icon(
@@ -431,9 +435,12 @@ fun RocketGameScreen(
 
             // Right Button
             Button(
-                onClick = { viewModel.moveRocketBy(0.12f) },
+                onClick = {
+                    com.example.util.SoundPlayer.playTap()
+                    viewModel.moveRocketBy(0.17f)
+                },
                 shape = RoundedCornerShape(20.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.2f)),
+                colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.25f)),
                 modifier = Modifier
                     .size(width = 100.dp, height = 52.dp)
                     .testTag("rocket_right_btn")

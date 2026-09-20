@@ -85,6 +85,14 @@ data class BalloonItem(
 )
 
 // Memory Card Model
+data class PlacedSticker(
+    val id: Long,
+    val emoji: String,
+    val title: String,
+    val xPercent: Float,
+    val yPercent: Float
+)
+
 data class MemoryCard(
     val id: Int,
     val pairKey: String,
@@ -185,8 +193,14 @@ class KidsViewModel(application: Application) : AndroidViewModel(application) {
     private val _petBounceTrigger = MutableStateFlow(0)
     val petBounceTrigger: StateFlow<Int> = _petBounceTrigger.asStateFlow()
 
-    private val _petLastActionText = MutableStateFlow("Tonton seni çok seviyor! 🥰")
+    private val _petLastActionText = MutableStateFlow("Tonton seninle oynamaya hazır! 🥰")
     val petLastActionText: StateFlow<String> = _petLastActionText.asStateFlow()
+
+    private val _selectedPetAccessory = MutableStateFlow<String?>(null) // "🎀", "🕶️", "🎩", "👑"
+    val selectedPetAccessory: StateFlow<String?> = _selectedPetAccessory.asStateFlow()
+
+    private val _placedStickers = MutableStateFlow<List<PlacedSticker>>(emptyList())
+    val placedStickers: StateFlow<List<PlacedSticker>> = _placedStickers.asStateFlow()
 
     // ------------------------------------------------------------------------
     // PUZZLE GAME STATE
@@ -386,37 +400,53 @@ class KidsViewModel(application: Application) : AndroidViewModel(application) {
             )
             val balloonEmojis = listOf("🎈", "🐻", "🐱", "🐰", "⭐", "🚀", "🦄", "🌈")
 
+            // 4 distinct horizontal lanes so balloons never overlap horizontally
+            val lanes = listOf(0.10f, 0.36f, 0.62f, 0.86f)
+            var lastLaneIndex = -1
+
+            var secondCounter = 0
+            var spawnTimer = 1100 // Spawn first balloon immediately
+
             while (_isBalloonGameActive.value && _balloonTimeRemaining.value > 0) {
-                delay(700)
-                _balloonTimeRemaining.value -= 1
+                delay(100)
+                secondCounter += 100
+                spawnTimer += 100
 
-                // Spawn 1 or 2 new balloons
-                val countToSpawn = if (Random.nextFloat() > 0.4f) 2 else 1
-                val newBalloons = mutableListOf<BalloonItem>()
+                // 1 second countdown
+                if (secondCounter >= 1000) {
+                    secondCounter = 0
+                    _balloonTimeRemaining.value -= 1
+                    if (_balloonTimeRemaining.value <= 0) break
+                }
 
-                for (i in 0 until countToSpawn) {
-                    val isGolden = Random.nextInt(10) == 0
+                // Smooth, non-cluttered spawn: exactly 1 balloon at a time, max 4 active on screen
+                val activeUnpopped = _balloons.value.filter { !it.isPopped }
+                if (spawnTimer >= 1200 && activeUnpopped.size < 4) {
+                    spawnTimer = 0
+
+                    val availableLanes = lanes.indices.filter { it != lastLaneIndex }
+                    val chosenLane = availableLanes.random()
+                    lastLaneIndex = chosenLane
+                    val xRatio = lanes[chosenLane]
+
+                    val isGolden = Random.nextInt(7) == 0
                     val emoji = if (isGolden) "👑" else balloonEmojis.random()
                     val color = if (isGolden) 0xFFFFD700 else balloonColors.random()
                     val points = if (isGolden) 50 else 10
-                    val xRatio = (15 + Random.nextInt(70)) / 100f
-                    val speed = 1.0f + Random.nextFloat() * 1.5f
+                    val speed = 1.0f
 
-                    newBalloons.add(
-                        BalloonItem(
-                            id = balloonIdGen++,
-                            emoji = emoji,
-                            colorHex = color,
-                            xRatio = xRatio,
-                            speed = speed,
-                            points = points,
-                            isGolden = isGolden
-                        )
+                    val newBalloon = BalloonItem(
+                        id = balloonIdGen++,
+                        emoji = emoji,
+                        colorHex = color,
+                        xRatio = xRatio,
+                        speed = speed,
+                        points = points,
+                        isGolden = isGolden
                     )
-                }
 
-                _balloons.value = (_balloons.value.filter { !it.isPopped } + newBalloons)
-                    .takeLast(14)
+                    _balloons.value = activeUnpopped + newBalloon
+                }
             }
 
             // Game over
@@ -425,6 +455,7 @@ class KidsViewModel(application: Application) : AndroidViewModel(application) {
             val earnedStars = maxOf(5, finalScore / 15)
 
             repository.recordBalloonGame(finalScore, earnedStars)
+            repository.reducePetHungerAfterGame()
             SoundPlayer.playCheer()
             _celebration.value = CelebrationInfo(
                 title = "Oyun Bitti! Harikasın!",
@@ -452,6 +483,10 @@ class KidsViewModel(application: Application) : AndroidViewModel(application) {
         _balloons.value = currentList.map {
             if (it.id == balloonId) it.copy(isPopped = true) else it
         }
+    }
+
+    fun removeBalloon(balloonId: Long) {
+        _balloons.value = _balloons.value.filterNot { it.id == balloonId }
     }
 
     // ------------------------------------------------------------------------
@@ -579,6 +614,7 @@ class KidsViewModel(application: Application) : AndroidViewModel(application) {
                         delay(400)
                         val reward = _memoryDifficulty.value.starsReward
                         repository.recordMemoryWin(_memoryMoves.value, reward)
+                        repository.reducePetHungerAfterGame()
                         SoundPlayer.playCheer()
                         _celebration.value = CelebrationInfo(
                             title = "Tebrikler Zeki Dostum!",
@@ -624,26 +660,79 @@ class KidsViewModel(application: Application) : AndroidViewModel(application) {
     // ------------------------------------------------------------------------
     fun petMascot() {
         viewModelScope.launch {
-            SoundPlayer.playPetGiggle()
             _petBounceTrigger.value += 1
-            val bonus = repository.petMascot()
-            val messages = listOf(
-                "Tonton kıkır kıkır güldü! Gıdı gıdı! 🥰",
-                "Tonton sana sıcacık sarıldı! 💕",
-                "Tonton hoplayıp zıpladı! Neşe saçtı! ⭐",
-                "Tonton'un sevgisi arttı! (+2 Yıldız)"
-            )
-            _petLastActionText.value = messages.random()
+            val currentLove = _profile.value.petLove
+            SoundPlayer.playPetGiggle()
+            if (currentLove >= 100) {
+                _petLastActionText.value = "Tonton sana sarıldı! 'Seni çok seviyorum!' 🥰 (Sevgi %100)"
+            } else {
+                val (stars, awarded) = repository.petMascot()
+                if (awarded) {
+                    val newLove = (_profile.value.petLove + 10).coerceAtMost(100)
+                    _petLastActionText.value = "Tonton kıkır kıkır güldü! Gıdı gıdı! 🥰 (+1 ⭐, Sevgi %$newLove)"
+                } else {
+                    _petLastActionText.value = "Tonton sana sıcacık sarıldı! 💕"
+                }
+            }
         }
     }
 
     fun feedPet(foodEmoji: String) {
         viewModelScope.launch {
-            SoundPlayer.playSparkle()
-            _petBounceTrigger.value += 1
-            val stars = repository.feedPet(foodEmoji)
-            _petLastActionText.value = "Tonton $foodEmoji yedi! 'Ham ham çok lezzetli!' (+5 Yıldız) 😋"
+            val currentHunger = _profile.value.petHunger
+            if (currentHunger >= 100) {
+                SoundPlayer.playPop()
+                _petLastActionText.value = "Tonton: 'Çok doydum, göbüşüm doldu! Teşekkürler!' 😋 (Tokluk %100)"
+            } else {
+                SoundPlayer.playSparkle()
+                _petBounceTrigger.value += 1
+                val (stars, awarded) = repository.feedPet(foodEmoji)
+                if (awarded) {
+                    val newHunger = (_profile.value.petHunger + 25).coerceAtMost(100)
+                    _petLastActionText.value = "Tonton $foodEmoji yedi! 'Nefis!' (+3 ⭐, Tokluk %$newHunger) 😋"
+                } else {
+                    _petLastActionText.value = "Tonton çok tok! Hadi biraz oyun oynayalım! 🎈"
+                }
+            }
         }
+    }
+
+    fun selectPetAccessory(accessoryEmoji: String?) {
+        SoundPlayer.playSparkle()
+        _selectedPetAccessory.value = if (_selectedPetAccessory.value == accessoryEmoji) null else accessoryEmoji
+        _petBounceTrigger.value += 1
+        _petLastActionText.value = if (_selectedPetAccessory.value != null) {
+            "Tonton yeni aksesuarını taktı: ${_selectedPetAccessory.value}! Çok havalı! ✨"
+        } else {
+            "Tonton şapkasını çıkardı. Rahatladı! 🐻"
+        }
+    }
+
+    fun placeStickerOnScene(sticker: StickerItemEntity) {
+        if (!sticker.isUnlocked) return
+        SoundPlayer.playSparkle()
+        val randomX = (15..80).random() / 100f
+        val randomY = (20..75).random() / 100f
+        val newItem = PlacedSticker(
+            id = System.currentTimeMillis() + (0..999).random(),
+            emoji = sticker.emoji,
+            title = sticker.title,
+            xPercent = randomX,
+            yPercent = randomY
+        )
+        _placedStickers.value = (_placedStickers.value + newItem).takeLast(8)
+        _petLastActionText.value = "${sticker.title} çıkartması sahneye yerleştirildi! 🎨"
+    }
+
+    fun removePlacedSticker(stickerId: Long) {
+        SoundPlayer.playPop()
+        _placedStickers.value = _placedStickers.value.filterNot { it.id == stickerId }
+    }
+
+    fun clearPlacedStickers() {
+        SoundPlayer.playWhoosh()
+        _placedStickers.value = emptyList()
+        _petLastActionText.value = "Sihirli sahne temizlendi. Yeni çıkartmalar ekleyebilirsin! ✨"
     }
 
     fun unlockSticker(sticker: StickerItemEntity) {
@@ -775,6 +864,7 @@ class KidsViewModel(application: Application) : AndroidViewModel(application) {
                 delay(300)
                 SoundPlayer.playCheer()
                 repository.recordPuzzleSolved(theme.name, theme.rewardStars)
+                repository.reducePetHungerAfterGame()
                 _celebration.value = CelebrationInfo(
                     title = "Harikasın! Yapboz Bitti!",
                     message = "${theme.name} yapbozunu ustalıkla tamamladın! +${theme.rewardStars} Parlak Yıldız kazandın! 🧩🌟",
@@ -826,14 +916,15 @@ class KidsViewModel(application: Application) : AndroidViewModel(application) {
                 Pair("🍓", 5),
                 Pair("🍦", 10),
                 Pair("💎", 20),
-                Pair("🌈", 15),
-                Pair("☁️", 5)
+                Pair("🌈", 15)
             )
             var timerCounter = 0
+            var spawnCooldown = 800 // Quick first star
 
             while (_isRocketActive.value && _rocketTimeRemaining.value > 0) {
-                delay(60)
-                timerCounter += 60
+                delay(50)
+                timerCounter += 50
+                spawnCooldown += 50
 
                 if (timerCounter >= 1000) {
                     timerCounter = 0
@@ -845,14 +936,19 @@ class KidsViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
-                if (Random.nextFloat() < 0.20f && _fallingStars.value.size < 8) {
+                // Spawn items ONE BY ONE with a clear cadence (at most 2 stars on screen, spaced apart)
+                if (spawnCooldown >= 1350 && _fallingStars.value.size < 2) {
+                    spawnCooldown = 0
                     val pick = starEmojis.random()
+                    // 5 well-defined lanes across the arena for fair, skill-based steering
+                    val lanes = listOf(0.16f, 0.33f, 0.50f, 0.67f, 0.84f)
+                    val chosenLane = lanes.random()
                     val newItem = FallingStarItem(
                         id = System.currentTimeMillis() + Random.nextLong(1000),
                         emoji = pick.first,
                         points = pick.second,
-                        xRatio = Random.nextFloat().coerceIn(0.12f, 0.88f),
-                        speed = Random.nextFloat() * 0.015f + 0.02f,
+                        xRatio = chosenLane,
+                        speed = 0.012f + Random.nextFloat() * 0.005f,
                         isSuper = (pick.first == "🌟" || pick.first == "💎")
                     )
                     _fallingStars.value = _fallingStars.value + newItem
@@ -863,9 +959,14 @@ class KidsViewModel(application: Application) : AndroidViewModel(application) {
 
     fun catchStarItem(starId: Long) {
         val star = _fallingStars.value.find { it.id == starId && !it.isCaught } ?: return
-        SoundPlayer.playWhoosh()
+        SoundPlayer.playSparkle()
         _rocketScore.value += star.points
         _starsCollectedCount.value += 1
+        _fallingStars.value = _fallingStars.value.filterNot { it.id == starId }
+    }
+
+    fun missStarItem(starId: Long) {
+        // Star fell past the rocket without being caught
         _fallingStars.value = _fallingStars.value.filterNot { it.id == starId }
     }
 
@@ -883,6 +984,7 @@ class KidsViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             SoundPlayer.playCheer()
             repository.recordRocketAdventure(collected, starsReward)
+            repository.reducePetHungerAfterGame()
             _celebration.value = CelebrationInfo(
                 title = "Harika Uçuş!",
                 message = "Roketinle gökyüzünde tam $collected ödül topladın! Skorun: $score! +$starsReward Parlak Yıldız kazandın! 🚀⭐",

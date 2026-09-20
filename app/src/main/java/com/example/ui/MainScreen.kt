@@ -84,6 +84,8 @@ fun MainScreen(
     // Pet state
     val petBounceTrigger by viewModel.petBounceTrigger.collectAsStateWithLifecycle()
     val petLastActionText by viewModel.petLastActionText.collectAsStateWithLifecycle()
+    val selectedPetAccessory by viewModel.selectedPetAccessory.collectAsStateWithLifecycle()
+    val placedStickers by viewModel.placedStickers.collectAsStateWithLifecycle()
 
     // Puzzle state
     val selectedPuzzleTheme by viewModel.selectedPuzzleTheme.collectAsStateWithLifecycle()
@@ -234,6 +236,8 @@ fun MainScreen(
                         stickers = stickers,
                         petBounceTrigger = petBounceTrigger,
                         petLastActionText = petLastActionText,
+                        selectedAccessory = selectedPetAccessory,
+                        placedStickers = placedStickers,
                         stars = profile.totalStars,
                         soundEnabled = soundEnabled
                     )
