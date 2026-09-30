@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -7,8 +8,13 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -31,11 +37,8 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -44,12 +47,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
@@ -60,20 +61,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.components.KidsTopBar
 import com.example.ui.theme.BrightOrange
 import com.example.ui.theme.CandyPurple
 import com.example.ui.theme.CoralRed
-import com.example.ui.theme.DarkText
-import com.example.ui.theme.LimeGreen
-import com.example.ui.theme.MintGreen
-import com.example.ui.theme.OceanBlue
 import com.example.ui.theme.SkyBlue
 import com.example.ui.theme.SunnyYellow
 import com.example.viewmodel.FallingStarItem
 import com.example.viewmodel.KidsViewModel
 import kotlinx.coroutines.delay
-import kotlin.math.abs
 import kotlin.math.roundToInt
 
 @Composable
@@ -88,14 +85,21 @@ fun RocketGameScreen(
     stars: Int,
     soundEnabled: Boolean
 ) {
-    // Local animation state for falling items (smooth fall on screen)
-    val itemProgressMap = remember { mutableStateListOf<Pair<Long, Float>>() }
+    val lastCatchEffect by viewModel.lastCatchEffect.collectAsStateWithLifecycle()
+
+    // Automatically clear catch toast effect after a brief time
+    LaunchedEffect(lastCatchEffect?.id) {
+        if (lastCatchEffect != null) {
+            delay(750)
+            viewModel.clearLastCatchEffect()
+        }
+    }
 
     // Twinkling background star effect
     val infiniteTransition = rememberInfiniteTransition(label = "rocket_twinkle")
     val twinkleAlpha by infiniteTransition.animateFloat(
         initialValue = 0.3f,
-        targetValue = 0.9f,
+        targetValue = 0.95f,
         animationSpec = infiniteRepeatable(
             animation = tween(1200, easing = LinearEasing),
             repeatMode = RepeatMode.Reverse
@@ -104,12 +108,21 @@ fun RocketGameScreen(
     )
     val flameScale by infiniteTransition.animateFloat(
         initialValue = 0.85f,
-        targetValue = 1.15f,
+        targetValue = 1.20f,
         animationSpec = infiniteRepeatable(
-            animation = tween(250, easing = FastOutSlowInEasing),
+            animation = tween(220, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "flame"
+    )
+    val noseGlowScale by infiniteTransition.animateFloat(
+        initialValue = 0.9f,
+        targetValue = 1.15f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(400, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "nose_glow"
     )
 
     Column(
@@ -118,7 +131,7 @@ fun RocketGameScreen(
             .background(
                 Brush.verticalGradient(
                     listOf(
-                        Color(0xFF0F172A),
+                        Color(0xFF0B0F19),
                         Color(0xFF1E1B4B),
                         Color(0xFF312E81)
                     )
@@ -138,7 +151,7 @@ fun RocketGameScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .padding(horizontal = 16.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -153,12 +166,12 @@ fun RocketGameScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text("⭐", fontSize = 18.sp)
+                    Text("⭐", fontSize = 16.sp)
                     Text(
                         text = "$score Puan",
                         fontWeight = FontWeight.Black,
                         color = SunnyYellow,
-                        fontSize = 16.sp
+                        fontSize = 15.sp
                     )
                 }
             }
@@ -166,7 +179,7 @@ fun RocketGameScreen(
             // Stars Collected Pill
             Surface(
                 shape = RoundedCornerShape(16.dp),
-                color = CandyPurple.copy(alpha = 0.3f),
+                color = CandyPurple.copy(alpha = 0.35f),
                 border = androidx.compose.foundation.BorderStroke(1.dp, CandyPurple.copy(alpha = 0.5f))
             ) {
                 Row(
@@ -187,7 +200,7 @@ fun RocketGameScreen(
             // Time Remaining Pill
             Surface(
                 shape = RoundedCornerShape(16.dp),
-                color = if (timeRemaining <= 10) CoralRed.copy(alpha = 0.4f) else SkyBlue.copy(alpha = 0.25f),
+                color = if (timeRemaining <= 10) CoralRed.copy(alpha = 0.45f) else SkyBlue.copy(alpha = 0.25f),
                 border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.3f))
             ) {
                 Row(
@@ -216,9 +229,9 @@ fun RocketGameScreen(
                 .background(
                     Brush.verticalGradient(
                         listOf(
-                            Color(0xFF090D16),
-                            Color(0xFF1E1B4B),
-                            Color(0xFF2E1065)
+                            Color(0xFF080C14),
+                            Color(0xFF131138),
+                            Color(0xFF241442)
                         )
                     )
                 )
@@ -240,117 +253,165 @@ fun RocketGameScreen(
             val arenaWidth = constraints.maxWidth.toFloat()
             val arenaHeight = constraints.maxHeight.toFloat()
 
-            // Decorative background stars
+            // 1. Subtle Guide Lanes (5 well-spaced vertical corridors)
+            KidsViewModel.ROCKET_LANES.forEach { laneX ->
+                val px = (laneX * arenaWidth).roundToInt()
+                Box(
+                    modifier = Modifier
+                        .offset { IntOffset(px - 1, 0) }
+                        .width(2.dp)
+                        .height((arenaHeight * 0.82f).dp)
+                        .alpha(0.08f)
+                        .background(Color.White)
+                )
+            }
+
+            // Decorative background celestial stars
             Box(
                 modifier = Modifier
-                    .offset(x = (arenaWidth * 0.15f).dp, y = (arenaHeight * 0.1f).dp)
+                    .offset(x = (arenaWidth * 0.12f).dp, y = (arenaHeight * 0.10f).dp)
                     .scale(twinkleAlpha)
             ) { Text("✨", fontSize = 14.sp, color = Color.White.copy(alpha = twinkleAlpha)) }
             Box(
                 modifier = Modifier
-                    .offset(x = (arenaWidth * 0.8f).dp, y = (arenaHeight * 0.25f).dp)
+                    .offset(x = (arenaWidth * 0.82f).dp, y = (arenaHeight * 0.22f).dp)
                     .scale(twinkleAlpha)
             ) { Text("🌟", fontSize = 16.sp, color = Color.White.copy(alpha = twinkleAlpha)) }
             Box(
                 modifier = Modifier
-                    .offset(x = (arenaWidth * 0.35f).dp, y = (arenaHeight * 0.45f).dp)
+                    .offset(x = (arenaWidth * 0.40f).dp, y = (arenaHeight * 0.38f).dp)
                     .scale(twinkleAlpha)
             ) { Text("✨", fontSize = 12.sp, color = Color.White.copy(alpha = twinkleAlpha)) }
 
-            // Falling items
+            // 2. Falling Items (Real-time synced from ViewModel game engine)
             fallingStars.forEach { item ->
-                // Local fall tracking
-                var localProgress by remember(item.id) { mutableStateOf(0f) }
+                key(item.id) {
+                    val itemX = (item.xRatio * arenaWidth).roundToInt()
+                    val itemY = (item.yRatio * arenaHeight).roundToInt()
 
-                LaunchedEffect(item.id, isActive) {
-                    if (!isActive) return@LaunchedEffect
-                    while (localProgress < 1.0f && isActive) {
-                        delay(25)
-                        localProgress += item.speed
-                        // Precise collision check when item reaches rocket nose cone (altitude 0.76f to 0.86f)
-                        if (localProgress in 0.76f..0.86f) {
-                            val dist = abs(item.xRatio - rocketX)
-                            // Realistic direct hit: rocket must be positioned right under the falling item
-                            if (dist < 0.085f) {
-                                viewModel.catchStarItem(item.id)
-                                break
+                    // Fading alpha if missed and dropping past the rocket
+                    val itemAlpha = when {
+                        item.isCaught -> 0.95f
+                        item.isMissed -> (1.0f - (item.yRatio - 0.83f) * 4.5f).coerceIn(0.0f, 1.0f)
+                        else -> 1.0f
+                    }
+
+                    val itemScale = if (item.isCaught) 1.25f else 1.0f
+
+                    Box(
+                        modifier = Modifier
+                            .offset { IntOffset(itemX - 26, itemY - 26) }
+                            .size(52.dp)
+                            .alpha(itemAlpha)
+                            .scale(itemScale)
+                            .testTag("falling_star_${item.id}"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Surface(
+                            modifier = Modifier.size(46.dp),
+                            shape = CircleShape,
+                            color = when {
+                                item.isCaught -> SunnyYellow.copy(alpha = 0.5f)
+                                item.isSuper -> SunnyYellow.copy(alpha = 0.35f)
+                                else -> Color.White.copy(alpha = 0.18f)
+                            },
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.5.dp,
+                                if (item.isSuper || item.isCaught) SunnyYellow else Color.White.copy(alpha = 0.45f)
+                            )
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = if (item.isCaught) "✨" else item.emoji,
+                                    fontSize = if (item.isSuper) 28.sp else 24.sp
+                                )
                             }
                         }
                     }
-                    if (localProgress >= 1.0f) {
-                        // Cleared bottom without hitting the rocket -> Missed!
-                        viewModel.missStarItem(item.id)
-                    }
                 }
+            }
 
-                val itemX = (item.xRatio * arenaWidth).roundToInt()
-                val itemY = (localProgress * arenaHeight * 0.85f).roundToInt()
-
-                Box(
-                    modifier = Modifier
-                        .offset { IntOffset(itemX - 28, itemY) }
-                        .size(56.dp)
-                        .testTag("falling_star_${item.id}"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    // Glow background
+            // 3. Floating Score Toast Notification when a star is caught
+            androidx.compose.animation.AnimatedVisibility(
+                visible = lastCatchEffect != null,
+                enter = fadeIn() + scaleIn() + slideInVertically(initialOffsetY = { 20 }),
+                exit = fadeOut() + scaleOut() + slideOutVertically(targetOffsetY = { -20 }),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .offset(y = (arenaHeight * 0.68f).dp)
+            ) {
+                lastCatchEffect?.let { effect ->
                     Surface(
-                        modifier = Modifier.size(46.dp),
-                        shape = CircleShape,
-                        color = if (item.isSuper) SunnyYellow.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.18f),
-                        border = androidx.compose.foundation.BorderStroke(
-                            1.5.dp,
-                            if (item.isSuper) SunnyYellow else Color.White.copy(alpha = 0.4f)
-                        )
+                        shape = RoundedCornerShape(20.dp),
+                        color = BrightOrange,
+                        border = androidx.compose.foundation.BorderStroke(2.dp, SunnyYellow),
+                        shadowElevation = 6.dp
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(effect.emoji, fontSize = 18.sp)
                             Text(
-                                text = item.emoji,
-                                fontSize = if (item.isSuper) 30.sp else 26.sp
+                                text = "+${effect.points} Harika! ⭐",
+                                color = Color.White,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 15.sp
                             )
                         }
                     }
                 }
             }
 
-            // The Rocket Player at the Bottom
+            // 4. The Rocket Player at the Bottom
             val rocketPixelX = (rocketX * arenaWidth).roundToInt()
-            val rocketPixelY = (arenaHeight * 0.82f).roundToInt()
+            val rocketPixelY = (arenaHeight * 0.79f).roundToInt()
 
             Column(
                 modifier = Modifier
-                    .offset { IntOffset(rocketPixelX - 44, rocketPixelY) }
-                    .size(88.dp)
+                    .offset { IntOffset(rocketPixelX - 42, rocketPixelY) }
+                    .size(84.dp)
                     .testTag("rocket_avatar"),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Rocket Emoji
+                // Rocket Nose Cone Capture Glow Zone
+                Box(
+                    modifier = Modifier
+                        .size(16.dp)
+                        .scale(noseGlowScale)
+                        .clip(CircleShape)
+                        .background(SkyBlue.copy(alpha = 0.5f))
+                )
+
+                // Rocket Body
                 Surface(
-                    modifier = Modifier.size(68.dp),
+                    modifier = Modifier.size(64.dp),
                     shape = CircleShape,
-                    color = Color.White.copy(alpha = 0.2f),
+                    color = Color.White.copy(alpha = 0.22f),
                     border = androidx.compose.foundation.BorderStroke(2.dp, SkyBlue)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Text(text = "🚀", fontSize = 42.sp)
+                        Text(text = "🚀", fontSize = 38.sp)
                     }
                 }
-                // Rocket Flame
+
+                // Rocket Flame Engine
                 Box(
                     modifier = Modifier
                         .scale(flameScale)
-                        .padding(top = 2.dp)
+                        .padding(top = 1.dp)
                 ) {
-                    Text("🔥", fontSize = 18.sp)
+                    Text("🔥", fontSize = 16.sp)
                 }
             }
 
-            // Game Over overlay if time runs out
+            // 5. Game Over overlay when round concludes
             if (!isActive && timeRemaining <= 0) {
                 Surface(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.7f)),
+                        .background(Color.Black.copy(alpha = 0.75f)),
                     color = Color.Transparent
                 ) {
                     Column(
@@ -386,7 +447,7 @@ fun RocketGameScreen(
             }
         }
 
-        // Bottom Left/Right Touch Controls for Small Children
+        // Bottom Left/Right Directional Controls for Children (Snapped by Lane)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -394,11 +455,11 @@ fun RocketGameScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Left Button
+            // Left Button (Snaps to previous star lane)
             Button(
                 onClick = {
                     com.example.util.SoundPlayer.playTap()
-                    viewModel.moveRocketBy(-0.17f)
+                    viewModel.moveRocketBy(-1f)
                 },
                 shape = RoundedCornerShape(20.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.25f)),
@@ -433,11 +494,11 @@ fun RocketGameScreen(
                 )
             }
 
-            // Right Button
+            // Right Button (Snaps to next star lane)
             Button(
                 onClick = {
                     com.example.util.SoundPlayer.playTap()
-                    viewModel.moveRocketBy(0.17f)
+                    viewModel.moveRocketBy(1f)
                 },
                 shape = RoundedCornerShape(20.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.25f)),

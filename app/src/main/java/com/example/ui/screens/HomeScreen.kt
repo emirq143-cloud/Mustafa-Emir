@@ -344,7 +344,7 @@ fun HomeScreen(
                                     color = DarkText
                                 )
                                 Text(
-                                    text = "%100 Güvenli • Veri Toplanmaz • Reklamsız",
+                                    text = "%100 Güvenli • Çocuklara Uygun Aile Reklamları • Gizlilik",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = Color(0xFF64748B)
                                 )
@@ -562,13 +562,13 @@ fun HomeScreen(
                         )
 
                         Text(
-                            text = "3. Reklamsız ve Güvenli",
+                            text = "3. Reklamlar ve Gelir Modeli (Çocuk & Aile Dostu)",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             color = DarkText
                         )
                         Text(
-                            text = "Uygulamada üçüncü taraf reklam ağları veya uygulama içi satın alma bulunmamaktadır. Çocukların yanlışlıkla harcama yapması veya uygunsuz içeriklerle karşılaşması imkansızdır.",
+                            text = "Uygulamanın ücretsiz olarak sunulabilmesi ve geliştirilmesinin sürdürülebilmesi amacıyla; Google Play Aileler Politikası ve COPPA standartlarına %100 uyumlu, filtrelenmiş çocuk ve aile dostu reklamlar gösterilebilir. Reklamlarda kişiselleştirilmiş veri takibi (reklam kimliği / GAID takibi) kesinlikle yapılmaz. Çocuklar için daima güvenli içerikler sunulur.",
                             style = MaterialTheme.typography.bodySmall,
                             color = Color(0xFF475569)
                         )

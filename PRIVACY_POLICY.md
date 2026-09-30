@@ -24,10 +24,12 @@ Geliştirici olarak çocukların ve ailelerin gizliliğini en yüksek önceliği
 
 ---
 
-### 3. Reklamlar ve Üçüncü Taraf Hizmetleri
-- Uygulamamız **REKLAMSIZDIR**. Hiçbir üçüncü taraf reklam ağı (Google AdMob, Unity Ads vb.) entegrasyonu barındırmaz.
-- Uygulama içi satın alma (In-App Purchase) veya abonelik bulunmaz.
-- Üçüncü taraf analitik (Google Analytics, Firebase Analytics vb.) izleme kodları çocukların gizliliğini korumak amacıyla kapalıdır/kullanılmaz.
+### 3. Reklamlar ve Gelir Modeli (Çocuk ve Aile Dostu)
+- Uygulamamızın ücretsiz olarak sunulabilmesi ve geliştirilmesinin sürdürülebilmesi amacıyla, Google Play Aileler Politikası (Families Policy) ve COPPA standartlarına %100 uyumlu **çocuk ve aile dostu üçüncü taraf reklam ağları** (Google AdMob Çocuk & Aile Filtreli Reklamlar vb.) aracılığıyla reklam gösterilebilir.
+- Reklamlar çocuklara özel filtrelenmiş olup daima yaş grubuna uygundur.
+- Davranışsal veya kişiselleştirilmiş reklam takibi (reklam kimliği / GAID takibi, profil çıkarma) KESİNLİKLE YAPILMAZ.
+- Çocukların hassas veya kişisel bilgileri reklam verenlerle paylaşılmaz.
+- Oyun içi satın alma (In-App Purchase) veya abonelik bulunmaz.
 
 ---
 

@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.random.Random
 
 sealed class KidsScreen {
@@ -66,10 +67,20 @@ data class FallingStarItem(
     val id: Long,
     val emoji: String,
     val points: Int,
-    val xRatio: Float, // 0.1f to 0.9f
-    val speed: Float,
+    val laneIndex: Int = 2,
+    val xRatio: Float, // 0.14f to 0.86f
+    val yRatio: Float = -0.05f, // 0.0f (top) to 1.1f (bottom)
+    val speed: Float = 0.008f,
     val isCaught: Boolean = false,
+    val isMissed: Boolean = false,
     val isSuper: Boolean = false
+)
+
+data class CatchToastEffect(
+    val id: Long,
+    val points: Int,
+    val emoji: String,
+    val xRatio: Float
 )
 
 // Balloon Model for Balloon Pop Game
@@ -297,6 +308,13 @@ class KidsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _rocketTimeRemaining = MutableStateFlow(40)
     val rocketTimeRemaining: StateFlow<Int> = _rocketTimeRemaining.asStateFlow()
+
+    private val _lastCatchEffect = MutableStateFlow<CatchToastEffect?>(null)
+    val lastCatchEffect: StateFlow<CatchToastEffect?> = _lastCatchEffect.asStateFlow()
+
+    companion object {
+        val ROCKET_LANES = listOf(0.14f, 0.32f, 0.50f, 0.68f, 0.86f)
+    }
 
     private var rocketGameJob: Job? = null
 
@@ -891,12 +909,19 @@ class KidsViewModel(application: Application) : AndroidViewModel(application) {
     // ROCKET STAR COLLECTOR GAME LOGIC
     // ------------------------------------------------------------------------
     fun setRocketPosition(xRatio: Float) {
-        _rocketX.value = xRatio.coerceIn(0.08f, 0.92f)
+        _rocketX.value = xRatio.coerceIn(0.12f, 0.88f)
     }
 
     fun moveRocketBy(deltaRatio: Float) {
-        val newX = (_rocketX.value + deltaRatio).coerceIn(0.08f, 0.92f)
-        _rocketX.value = newX
+        val current = _rocketX.value
+        val newTarget = if (deltaRatio > 0) {
+            // Next lane to the right
+            ROCKET_LANES.firstOrNull { it > current + 0.05f } ?: ROCKET_LANES.last()
+        } else {
+            // Next lane to the left
+            ROCKET_LANES.lastOrNull { it < current - 0.05f } ?: ROCKET_LANES.first()
+        }
+        _rocketX.value = newTarget
     }
 
     fun startRocketGame() {
@@ -905,7 +930,8 @@ class KidsViewModel(application: Application) : AndroidViewModel(application) {
         _starsCollectedCount.value = 0
         _rocketTimeRemaining.value = 40
         _fallingStars.value = emptyList()
-        _rocketX.value = 0.5f
+        _rocketX.value = 0.50f
+        _lastCatchEffect.value = null
 
         rocketGameJob?.cancel()
         rocketGameJob = viewModelScope.launch {
@@ -918,14 +944,17 @@ class KidsViewModel(application: Application) : AndroidViewModel(application) {
                 Pair("💎", 20),
                 Pair("🌈", 15)
             )
+
             var timerCounter = 0
-            var spawnCooldown = 800 // Quick first star
+            var spawnCooldown = 1000 // Quick initial star
+            var lastLaneIndex = -1
+            var catchCooldownTicks = 0
 
             while (_isRocketActive.value && _rocketTimeRemaining.value > 0) {
-                delay(50)
-                timerCounter += 50
-                spawnCooldown += 50
+                delay(25) // ~40 FPS smooth game tick
+                timerCounter += 25
 
+                // 1. One second countdown
                 if (timerCounter >= 1000) {
                     timerCounter = 0
                     val remaining = _rocketTimeRemaining.value - 1
@@ -936,38 +965,117 @@ class KidsViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
-                // Spawn items ONE BY ONE with a clear cadence (at most 2 stars on screen, spaced apart)
-                if (spawnCooldown >= 1350 && _fallingStars.value.size < 2) {
+                if (catchCooldownTicks > 0) {
+                    catchCooldownTicks--
+                }
+
+                val curRocketX = _rocketX.value
+                val currentList = _fallingStars.value
+                val nextList = mutableListOf<FallingStarItem>()
+                var newlyCaughtStar: FallingStarItem? = null
+
+                // 2. Advance falling positions & precise single-star collision check
+                for (item in currentList) {
+                    if (item.isCaught) {
+                        // Caught star briefly travels slightly with rocket before disappearing
+                        val newY = item.yRatio + 0.003f
+                        if (newY < 0.88f) {
+                            nextList.add(item.copy(yRatio = newY))
+                        }
+                        continue
+                    }
+
+                    val newY = item.yRatio + item.speed
+
+                    // CRITICAL: If the star has fallen past the rocket nose (altitude > 0.83f)
+                    // It is immediately marked as MISSED. It can NEVER be caught from behind!
+                    if (newY > 0.83f) {
+                        if (newY < 1.05f) {
+                            nextList.add(item.copy(yRatio = newY, isMissed = true))
+                        }
+                        // Off-screen items (>= 1.05f) are dropped naturally
+                        continue
+                    }
+
+                    // Precise nose cone collision check:
+                    // Must hit the rocket nose (0.76f .. 0.83f) with direct horizontal alignment (<= 0.075f)
+                    val inCatchAltitude = newY in 0.76f..0.83f
+                    val horizontalDist = abs(item.xRatio - curRocketX)
+                    val isDirectHit = horizontalDist <= 0.075f
+
+                    if (inCatchAltitude && isDirectHit && !item.isMissed && catchCooldownTicks == 0 && newlyCaughtStar == null) {
+                        // Catch ONLY this single star!
+                        val caught = item.copy(yRatio = newY, isCaught = true)
+                        newlyCaughtStar = caught
+                        nextList.add(caught)
+                    } else {
+                        nextList.add(item.copy(yRatio = newY))
+                    }
+                }
+
+                // If a star was caught this tick:
+                if (newlyCaughtStar != null) {
+                    catchCooldownTicks = 8 // 200ms lock: prevents vacuuming multiple items at once
+                    SoundPlayer.playSparkle()
+                    _rocketScore.value += newlyCaughtStar.points
+                    _starsCollectedCount.value += 1
+                    _lastCatchEffect.value = CatchToastEffect(
+                        id = System.currentTimeMillis(),
+                        points = newlyCaughtStar.points,
+                        emoji = newlyCaughtStar.emoji,
+                        xRatio = newlyCaughtStar.xRatio
+                    )
+                }
+
+                // 3. Spawning: exactly ONE item at a time, spaced generously
+                spawnCooldown += 25
+                val activeStars = nextList.filter { !it.isCaught && !it.isMissed }
+                val hasStarAboveHalf = activeStars.any { it.yRatio < 0.50f }
+
+                // Only spawn if no star is in top half of screen, total active on screen < 2, and spawn interval met
+                if (!hasStarAboveHalf && activeStars.size < 2 && spawnCooldown >= 1400) {
                     spawnCooldown = 0
+                    var chosenLane = Random.nextInt(ROCKET_LANES.size)
+                    if (chosenLane == lastLaneIndex) {
+                        chosenLane = (chosenLane + 1 + Random.nextInt(ROCKET_LANES.size - 1)) % ROCKET_LANES.size
+                    }
+                    lastLaneIndex = chosenLane
+
                     val pick = starEmojis.random()
-                    // 5 well-defined lanes across the arena for fair, skill-based steering
-                    val lanes = listOf(0.16f, 0.33f, 0.50f, 0.67f, 0.84f)
-                    val chosenLane = lanes.random()
                     val newItem = FallingStarItem(
                         id = System.currentTimeMillis() + Random.nextLong(1000),
                         emoji = pick.first,
                         points = pick.second,
-                        xRatio = chosenLane,
-                        speed = 0.012f + Random.nextFloat() * 0.005f,
-                        isSuper = (pick.first == "🌟" || pick.first == "💎")
+                        laneIndex = chosenLane,
+                        xRatio = ROCKET_LANES[chosenLane],
+                        yRatio = -0.05f,
+                        speed = 0.0075f + Random.nextFloat() * 0.0025f,
+                        isSuper = (pick.first == "🌟" || pick.first == "💎" || pick.first == "🌈")
                     )
-                    _fallingStars.value = _fallingStars.value + newItem
+                    nextList.add(newItem)
                 }
+
+                _fallingStars.value = nextList
             }
         }
     }
 
     fun catchStarItem(starId: Long) {
-        val star = _fallingStars.value.find { it.id == starId && !it.isCaught } ?: return
+        val star = _fallingStars.value.find { it.id == starId && !it.isCaught && !it.isMissed } ?: return
         SoundPlayer.playSparkle()
         _rocketScore.value += star.points
         _starsCollectedCount.value += 1
-        _fallingStars.value = _fallingStars.value.filterNot { it.id == starId }
+        _fallingStars.value = _fallingStars.value.map {
+            if (it.id == starId) it.copy(isCaught = true) else it
+        }
     }
 
     fun missStarItem(starId: Long) {
-        // Star fell past the rocket without being caught
         _fallingStars.value = _fallingStars.value.filterNot { it.id == starId }
+    }
+
+    fun clearLastCatchEffect() {
+        _lastCatchEffect.value = null
     }
 
     fun stopRocketGame() {
